@@ -25,7 +25,7 @@ from telegram.ext import (
 BOT_TOKEN     = os.environ.get("BOT_TOKEN", "8304089414:AAH_zuOyKUxANR_dzmIl1QLfx_kF2bp8Pe0")
 ADMIN_IDS     = [1446058092, 6894923643]
 ADMIN_ID      = ADMIN_IDS[0]  # kept for compatibility
-DATA_FILE     = "bot_data.json"
+DATA_FILE     = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bot_data.json")
 _BOT_USERNAME = "Anendj2000_bot"  # filled at startup
 
 REGISTER_URL = "https://auth-service.habuild.in/public/user/v1/register-user"
@@ -67,9 +67,11 @@ async def load_data():
             s.setdefault("force_channel", "")
             s.setdefault("signup_bonus", 0)
             _data.setdefault("users", {})
-            logging.info(f"✅ Data loaded: {len(_data['users'])} users")
+            logging.info(f"✅ Data loaded: {len(_data['users'])} users from {DATA_FILE}")
         except Exception as e:
             logging.warning(f"Load failed: {e}")
+    else:
+        logging.warning(f"⚠️ Data file not found at {DATA_FILE} - starting fresh")
 
 async def save_data():
     async with _lock:
@@ -88,6 +90,10 @@ def get_user(uid: int) -> dict:
             "referred_by": "", "ref_rewarded": False,
         }
     u = _data["users"][key]
+    u.setdefault("name", "")
+    u.setdefault("refer_code", "")
+    u.setdefault("points", 0)
+    u.setdefault("total_refers", 0)
     u.setdefault("bot_refers", 0)
     u.setdefault("referred_by", "")
     u.setdefault("ref_rewarded", False)
@@ -151,18 +157,26 @@ async def get_session():
         )
     return _session
 
-async def api_post(url, payload, headers):
+async def api_post(url, payload, headers, max_retries=3):
     s = await get_session()
-    try:
-        async with s.post(url, json=payload, headers=headers) as r:
-            text = await r.text()
-            logging.info(f"API {url} → {r.status}: {text[:200]}")
-            if r.status in (200, 201):
-                try: return json.loads(text), None
-                except: return None, "Invalid JSON"
-            return None, f"HTTP {r.status}: {text[:150]}"
-    except asyncio.TimeoutError: return None, "Timeout"
-    except Exception as e:     return None, str(e)
+    for attempt in range(max_retries + 1):
+        try:
+            async with s.post(url, json=payload, headers=headers) as r:
+                text = await r.text()
+                logging.info(f"API {url} → {r.status}: {text[:200]}")
+                if r.status in (200, 201):
+                    try: return json.loads(text), None
+                    except: return None, "Invalid JSON"
+                # 418 = rate limited / teapot -> auto-retry with backoff
+                if r.status == 418 and attempt < max_retries:
+                    delay = 3 * (attempt + 1)  # 3s, 6s, 9s
+                    logging.warning(f"418 rate limited, retry {attempt+1}/{max_retries} after {delay}s")
+                    await asyncio.sleep(delay)
+                    continue
+                return None, f"HTTP {r.status}: {text[:150]}"
+        except asyncio.TimeoutError: return None, "Timeout"
+        except Exception as e:     return None, str(e)
+    return None, "HTTP 418: Rate limited after retries"
 
 async def api_register(phone, code, name, did, sid):
     return await api_post(REGISTER_URL, {

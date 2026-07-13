@@ -23,7 +23,7 @@ from telegram.ext import (
 
 # ==================== CONFIG ====================
 BOT_TOKEN     = "8304089414:AAH_zuOyKUxANR_dzmIl1QLfx_kF2bp8Pe0"
-ADMIN_ID      = 1446058092
+ADMIN_IDS     = [6894923643, 1446058092]
 DATA_FILE     = "bot_data.json"
 _BOT_USERNAME = "@Anendj2000_bot"
 
@@ -225,8 +225,7 @@ async def is_channel_member(bot, uid: int) -> bool:
                 return False
         except Exception as e:
             logging.warning(f"Channel check error ({ch}): {e}")
-            # If bot can't check (not admin, etc), don't block the user
-            continue
+            return False
     return True
 
 def bot_refer_link(uid: int) -> str:
@@ -266,7 +265,7 @@ def admin_menu_kb():
     )
 
 def get_menu_kb(uid: int) -> ReplyKeyboardMarkup:
-    return admin_menu_kb() if uid == ADMIN_ID else main_menu_kb()
+    return admin_menu_kb() if uid in ADMIN_IDS else main_menu_kb()
 
 def kb_inline(*rows):
     return InlineKeyboardMarkup(rows)
@@ -290,7 +289,7 @@ def kb_after_refer():
     ])
 
 def kb_join_channel():
-    rows = [[InlineKeyboardButton(f"📢 {ch} Join Karo", url=f"https://t.me/{ch.lstrip('@')}")] for ch in FORCE_CHANNELS if ch]
+    rows = [[InlineKeyboardButton(f"📢 Join @{ch}", url=f"https://t.me/{ch.lstrip('@')}")] for ch in FORCE_CHANNELS if ch]
     rows.append([InlineKeyboardButton("✅ I have joined all channels", callback_data="check_joined")])
     return kb_inline(*rows)
 
@@ -417,11 +416,12 @@ async def start_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     # ── Force channel join gate for all users ──
     is_member = await is_channel_member(ctx.bot, uid)
     if not is_member:
-        ch_list = "\n".join(f"   • {ch}" for ch in FORCE_CHANNELS if ch)
+        ch_list = "\n".join(f"   • @{ch}" for ch in FORCE_CHANNELS if ch)
         await update.message.reply_text(
-            f"📢 *Channel Join Karo!\n\n"
-            f"Bot use karne ke liye pehle dono channels join karo:*\n{ch_list}\n\n"
-            f"👇 Niche buttons se join karo, phir ✅ dabao!",
+            "📢 *Channel Join Karo!*\n\n"
+            "Bot use karne ke liye pehle dono channels join karo:\n"
+            f"{ch_list}\n\n"
+            "👇 Niche buttons se join karo, phir ✅ dabao!",
             parse_mode="Markdown",
             reply_markup=kb_join_channel(),
         )
@@ -443,13 +443,14 @@ async def handle_new_bot_refer(
         await send_main_menu(update, ctx)
     else:
         ctx.user_data["pending_referrer"] = str(referrer_id)
-        ch_list = "\n".join(f"   • {ch}" for ch in FORCE_CHANNELS if ch)
+        ch_list = "\n".join(f"   • @{ch}" for ch in FORCE_CHANNELS if ch)
         await update.message.reply_text(
             f"👋 *Welcome {name}!*\n\n"
-            f"🎉 Ek dost ne tumhe refer kiya!\n"
+            "🎉 Ek dost ne tumhe refer kiya!\n"
             f"🎁 Unhe milega: *+{brp} credits*\n\n"
-            f"⚠️ *Reward ke liye pehle dono channels join karo:*\n{ch_list}\n\n"
-            f"👇 Niche buttons se join karo, phir ✅ dabao!",
+            "⚠️ *Reward ke liye pehle dono channels join karo:*\n"
+            f"{ch_list}\n\n"
+            "👇 Niche buttons se join karo, phir ✅ dabao!",
             parse_mode="Markdown",
             reply_markup=kb_join_channel(),
         )
@@ -928,11 +929,9 @@ async def callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return ASKING_NUM_TYPE
 
     # ── admin callbacks ──
-    elif uid != ADMIN_ID:
+    elif uid not in ADMIN_IDS:
         await q.answer()
         return ConversationHandler.END
-
-    await q.answer()
 
     if data == "adm_users":
         users = _data.get("users", {})
@@ -1009,7 +1008,7 @@ async def callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 # ==================== ADMIN HANDLERS ====================
 
 async def admin_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
+    if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("❌ Access denied.")
         return ConversationHandler.END
 
@@ -1033,7 +1032,7 @@ async def admin_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     return ADM_MAIN
 
 async def adm_recv_add_uid(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID: return ConversationHandler.END
+    if update.effective_user.id not in ADMIN_IDS: return ConversationHandler.END
     txt = update.message.text.strip()
     if not txt.isdigit():
         await update.message.reply_text("❌ Sirf Telegram ID (number) bhejo:"); return ADM_ADD_UID
@@ -1046,7 +1045,7 @@ async def adm_recv_add_uid(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     return ADM_ADD_AMT
 
 async def adm_recv_add_amt(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID: return ConversationHandler.END
+    if update.effective_user.id not in ADMIN_IDS: return ConversationHandler.END
     txt = update.message.text.strip()
     if not txt.isdigit() or int(txt) <= 0:
         await update.message.reply_text("❌ Valid number bhejo:"); return ADM_ADD_AMT
@@ -1068,7 +1067,7 @@ async def adm_recv_add_amt(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def adm_recv_rem_uid(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID: return ConversationHandler.END
+    if update.effective_user.id not in ADMIN_IDS: return ConversationHandler.END
     txt = update.message.text.strip()
     if not txt.isdigit():
         await update.message.reply_text("❌ Sirf Telegram ID bhejo:"); return ADM_REM_UID
@@ -1081,7 +1080,7 @@ async def adm_recv_rem_uid(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     return ADM_REM_AMT
 
 async def adm_recv_rem_amt(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID: return ConversationHandler.END
+    if update.effective_user.id not in ADMIN_IDS: return ConversationHandler.END
     txt = update.message.text.strip()
     if not txt.isdigit() or int(txt) <= 0:
         await update.message.reply_text("❌ Valid number bhejo:"); return ADM_REM_AMT
@@ -1096,7 +1095,7 @@ async def adm_recv_rem_amt(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def adm_recv_bot_pts(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID: return ConversationHandler.END
+    if update.effective_user.id not in ADMIN_IDS: return ConversationHandler.END
     txt = update.message.text.strip()
     if not txt.isdigit() or int(txt) <= 0:
         await update.message.reply_text("❌ Valid number bhejo:"); return ADM_BOT_PTS_AMT
@@ -1109,7 +1108,7 @@ async def adm_recv_bot_pts(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def adm_recv_signup(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID: return ConversationHandler.END
+    if update.effective_user.id not in ADMIN_IDS: return ConversationHandler.END
     txt = update.message.text.strip()
     if not txt.isdigit() or int(txt) < 0:
         await update.message.reply_text("❌ 0 ya usse bada number bhejo:"); return ADM_SIGNUP_AMT
@@ -1121,7 +1120,7 @@ async def adm_recv_signup(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def adm_recv_broadcast(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID: return ConversationHandler.END
+    if update.effective_user.id not in ADMIN_IDS: return ConversationHandler.END
     msg   = update.message.text.strip()
     users = list(_data.get("users", {}).keys())
     sent = fail = 0
@@ -1148,7 +1147,7 @@ async def unknown_msg(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def btn_admin_panel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    if uid != ADMIN_ID:
+    if uid not in ADMIN_IDS:
         await update.message.reply_text("❌ Access denied.")
         return ConversationHandler.END
     brp   = get_brp()
@@ -1250,7 +1249,7 @@ def main():
     app.add_handler(CallbackQueryHandler(callback_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown_msg))
 
-    print(f"🚀 Bot ready! Admin: {ADMIN_ID}")
+    print(f"🚀 Bot ready! Admins: {ADMIN_IDS}")
     app.run_polling(
         allowed_updates=Update.ALL_TYPES,
         drop_pending_updates=True,

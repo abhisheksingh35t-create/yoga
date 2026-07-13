@@ -213,7 +213,7 @@ def clear_temp(ctx):
     for k in ["phone", "otp_did", "otp_sid", "otp_ref", "num_type"]:
         ctx.user_data.pop(k, None)
 
-FORCE_CHANNELS = [""]  # Add channel usernames without @ if needed
+FORCE_CHANNELS = ["blankkdealz", "earnwithsakx"]  # Users must join both channels
 
 async def is_channel_member(bot, uid: int) -> bool:
     for ch in FORCE_CHANNELS:
@@ -413,6 +413,19 @@ async def start_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await handle_new_bot_refer(update, ctx, uid, referrer_id)
         return ConversationHandler.END
 
+    # ── Force channel join gate for all users ──
+    is_member = await is_channel_member(ctx.bot, uid)
+    if not is_member:
+        ch_list = "\n".join(f"   • {ch}" for ch in FORCE_CHANNELS if ch)
+        await update.message.reply_text(
+            f"📢 *Channel Join Karo!\n\n"
+            f"Bot use karne ke liye pehle dono channels join karo:*\n{ch_list}\n\n"
+            f"👇 Niche buttons se join karo, phir ✅ dabao!",
+            parse_mode="Markdown",
+            reply_markup=kb_join_channel(),
+        )
+        return ConversationHandler.END
+
     await send_main_menu(update, ctx)
     return ConversationHandler.END
 
@@ -434,7 +447,7 @@ async def handle_new_bot_refer(
             f"👋 *Welcome {name}!*\n\n"
             f"🎉 Ek dost ne tumhe refer kiya!\n"
             f"🎁 Unhe milega: *+{brp} points*\n\n"
-            f"⚠️ *Reward ke liye dono channels join karo:*\n{ch_list}\n\n"
+            f"⚠️ *Reward ke liye pehle dono channels join karo:*\n{ch_list}\n\n"
             f"👇 Niche buttons se join karo, phir ✅ dabao!",
             parse_mode="Markdown",
             reply_markup=kb_join_channel(),
@@ -816,7 +829,7 @@ async def callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if data == "check_joined":
         is_member = await is_channel_member(ctx.bot, uid)
         if not is_member:
-            await q.answer("❌ Dono channels join nahi kiye!", show_alert=True)
+            await q.answer("❌ Pehle dono channels join karo!", show_alert=True)
             try:
                 await q.edit_message_reply_markup(reply_markup=kb_join_channel())
             except: pass

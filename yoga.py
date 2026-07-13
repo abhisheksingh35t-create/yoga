@@ -290,7 +290,7 @@ def kb_after_refer():
 
 def kb_join_channel():
     rows = [[InlineKeyboardButton(f"📢 {ch} Join Karo", url=f"https://t.me/{ch.lstrip('@')}")] for ch in FORCE_CHANNELS if ch]
-    rows.append([InlineKeyboardButton("✅ qr mango", callback_data="check_joined")])
+    rows.append([InlineKeyboardButton("✅ I have joined all channels", callback_data="check_joined")])
     return kb_inline(*rows)
 
 def kb_admin_main():

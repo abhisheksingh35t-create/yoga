@@ -447,7 +447,7 @@ async def handle_new_bot_refer(
         await update.message.reply_text(
             f"👋 *Welcome {name}!*\n\n"
             f"🎉 Ek dost ne tumhe refer kiya!\n"
-            f"🎁 Unhe milega: *+{brp} points*\n\n"
+            f"🎁 Unhe milega: *+{brp} credits*\n\n"
             f"⚠️ *Reward ke liye pehle dono channels join karo:*\n{ch_list}\n\n"
             f"👇 Niche buttons se join karo, phir ✅ dabao!",
             parse_mode="Markdown",
@@ -473,7 +473,7 @@ async def _reward_bot_referrer(
             referrer_id,
             f"🎉 *Bot Refer Complete!*\n\n"
             f"✅ *{new_name}* channel join kar liya!\n"
-            f"🎁 *+{brp} points* aapke account mein add ho gaye!\n\n"
+            f"🎁 *+{brp} credits* aapke account mein add ho gaye!\n\n"
             f"💰 *Aapke Total Points:* `{ref_u['points']}`\n"
             f"🤝 *Total Bot Refers:* `{ref_u['bot_refers']}`",
             parse_mode="Markdown",
@@ -554,8 +554,8 @@ async def btn_refer_link(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"🔗 *Aapka Bot Referral Link*\n\n"
         f"`{link}`\n\n"
-        f"📤 *admin se qr mango!*\n"
-        f"✅ after payment point add ho jayenge *+{brp} points* milenge!\n\n"
+        f"🎁 *1 Referral = {brp} Credits!*\n\n"
+        f"❤️ Apna link share karo → dost join kare → aapko *+{brp} credits* milenge!\n\n"
         f"{ch_lines}\n\n"
         f"🤝 *Aapke Total Bot Refers:* `{u.get('bot_refers', 0)}`",
         parse_mode="Markdown",
@@ -584,7 +584,7 @@ async def btn_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"   → 1 refer = 1 point use\n\n"
         f"🔗 *Refer Link*\n"
         f"   → Apna bot invite link share karo\n"
-        f"   → Dost join kare + dono channels join kare → *+{brp} pts* milenge!\n\n"
+        f"   → Dost join kare + dono channels join kare → *+{brp} credits* milenge!\n\n"
         f"📊 *Total Stats*  → Bot ki puri stats dekho\n"
         f"🔄 *Code Update*  → Naya Habit.Yoga code set karo\n\n"
         f"━━━━━━━━━━━━━━━━\n"
@@ -683,7 +683,7 @@ async def receive_phone(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     pts = get_user(uid).get("points", 0)
     if pts < 1:
         await update.message.reply_text(
-            f"❌ *Points Khatam!*\n\n💡 🔗 Refer Link se dost bulao → *+{get_brp()} pts* milenge",
+            f"❌ *Points Khatam!*\n\n💡 🔗 Refer Link se dost bulao → *+{get_brp()} credits* milenge",
             parse_mode="Markdown",
             reply_markup=get_menu_kb(uid),
         )
@@ -912,7 +912,7 @@ async def callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.answer()
         pts = get_user(uid).get("points", 0)
         if pts < 1:
-            try: await q.edit_message_text(f"❌ Points khatam! 🔗 Refer Link se dost bulao → +{get_brp()} pts milenge.")
+            try: await q.edit_message_text(f"❌ Credits khatam! 🔗 Refer Link se dost bulao → +{get_brp()} credits milenge.")
             except: pass
             await ctx.bot.send_message(uid, "🏠 Main Menu:", reply_markup=get_menu_kb(uid))
             return ConversationHandler.END

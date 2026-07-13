@@ -550,6 +550,49 @@ async def btn_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     )
     return ConversationHandler.END
 
+# ==================== LINK / CODE INPUT ====================
+
+async def receive_link(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    raw = update.message.text.strip()
+
+    if not raw:
+        await update.message.reply_text(
+            "❌ Valid referral link ya code bhejo:\n"
+            "`https://habit.yoga/yourcode`\n"
+            "_Ya sirf code: `yourcode`_",
+            parse_mode="Markdown",
+            reply_markup=kb_cancel(),
+        )
+        return ASKING_LINK
+
+    code = extract_code(raw)
+    if not code:
+        await update.message.reply_text(
+            "❌ *Invalid code!*\n\n"
+            "Sahi format mein bhejo:\n"
+            "`https://habit.yoga/yourcode`\n"
+            "_Ya sirf code: `yourcode`_",
+            parse_mode="Markdown",
+            reply_markup=kb_cancel(),
+        )
+        return ASKING_LINK
+
+    # Save the refer code
+    async with _lock:
+        u = get_user(uid)
+        u["refer_code"] = code
+    asyncio.create_task(save_data())
+
+    await update.message.reply_text(
+        f"✅ *Referral code set ho gaya!*\n"
+        f"📌 Code: `{code}`\n\n"
+        f"Ab 🚀 Start Workflow dabao!",
+        parse_mode="Markdown",
+        reply_markup=get_menu_kb(uid),
+    )
+    return ConversationHandler.END
+
 # ==================== NUMBER TYPE & PHONE ====================
 
 async def receive_number_type(update: Update, ctx: ContextTypes.DEFAULT_TYPE):

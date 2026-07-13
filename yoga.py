@@ -32,18 +32,39 @@ REGISTER_URL = "https://auth-service.habuild.in/public/user/v1/register-user"
 LOGIN_URL    = "https://auth-service.habuild.in/public/auth/v1/login"
 VERIFY_URL   = "https://auth-service.habuild.in/public/auth/v1/verify-otp"
 
-HEADERS = {
-    "accept": "application/json",
-    "accept-language": "en-US,en;q=0.9",
-    "content-type": "application/json",
-    "origin": "https://habit.yoga",
-    "referer": "https://habit.yoga/",
-    "sec-fetch-dest": "empty",
-    "sec-fetch-mode": "cors",
-    "sec-fetch-site": "cross-site",
-    "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",
-}
-REG_HEADERS = {**HEADERS, "authorization": "Bearer"}
+USER_AGENTS = [
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Mobile/15E148 Safari/604.1",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 16_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.7 Mobile/15E148 Safari/604.1",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+]
+
+def _make_headers(extra_auth=False):
+    ua = random.choice(USER_AGENTS)
+    is_safari = "Safari" in ua and "Chrome" not in ua
+    h = {
+        "accept": "application/json",
+        "accept-language": "en-US,en;q=0.9",
+        "content-type": "application/json",
+        "origin": "https://habit.yoga",
+        "referer": "https://habit.yoga/",
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "cross-site",
+        "user-agent": ua,
+    }
+    # Safari doesn't send sec-ch-ua headers; Chrome does
+    if not is_safari:
+        h["sec-ch-ua"] = '"Google Chrome";v="125", "Chromium";v="125", "Not.A/Brand";v="24"'
+        h["sec-ch-ua-mobile"] = "?0"
+        h["sec-ch-ua-platform"] = '"Windows"'
+    # No broken "Bearer" with no token — that flags bots
+    return h
+
+HEADERS     = _make_headers(extra_auth=False)
+REG_HEADERS = _make_headers(extra_auth=False)  # same headers, no fake auth
 
 # ==================== DATA STORE ====================
 _data: dict = {
@@ -144,6 +165,7 @@ async def do_bot_refer_reward(referrer_id: int):
 
 # ==================== HTTP ====================
 _session: Optional[aiohttp.ClientSession] = None
+_cookie_jar: Optional[aiohttp.CookieJar] = None
 
 async def get_session():
     global _session
@@ -157,33 +179,92 @@ async def get_session():
         )
     return _session
 
-async def api_post(url, payload, headers, max_retries=3):
-    s = await get_session()
+async def prefetch_cookies():
+    """Visit habit.yoga first to get anti-bot cookies, like a real browser."""
+    global _cookie_jar
+    try:
+        jar = aiohttp.CookieJar(unsafe=True)
+        conn = aiohttp.TCPConnector(limit=5, ssl=False, force_close=True)
+        async with aiohttp.ClientSession(
+            connector=conn,
+            cookie_jar=jar,
+            timeout=aiohttp.ClientTimeout(total=15, connect=10),
+        ) as s:
+            ua = random.choice(USER_AGENTS)
+            async with s.get("https://habit.yoga/", headers={
+                "user-agent": ua,
+                "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "accept-language": "en-US,en;q=0.9",
+                "sec-fetch-dest": "document",
+                "sec-fetch-mode": "navigate",
+                "sec-fetch-site": "none",
+                "sec-fetch-user": "?1",
+                "upgrade-insecure-requests": "1",
+            }) as r:
+                await r.text()
+        _cookie_jar = jar
+        logging.info(f"\u2705 Prefetched cookies from habit.yoga")
+    except Exception as e:
+        logging.warning(f"Cookie prefetch failed: {e}")
+
+def _get_cookie_header():
+    """Build Cookie header from prefetched jar."""
+    if _cookie_jar is None:
+        return None
+    try:
+        cookies = []
+        for cookie in _cookie_jar:
+            cookies.append(f"{cookie.key}={cookie.value}")
+        return "; ".join(cookies) if cookies else None
+    except:
+        return None
+
+async def api_post(url, payload, headers, max_retries=5):
     for attempt in range(max_retries + 1):
+        # Rotate user-agent on retries
+        if attempt > 0:
+            headers = {**headers, "user-agent": random.choice(USER_AGENTS)}
+
+        # Add cookies from prefetch if available
+        cookie_hdr = _get_cookie_header()
+        if cookie_hdr:
+            headers = {**headers, "cookie": cookie_hdr}
+
+        s = await get_session()
         try:
             async with s.post(url, json=payload, headers=headers) as r:
                 text = await r.text()
-                logging.info(f"API {url} → {r.status}: {text[:200]}")
+                logging.info(f"API {url} \u2192 {r.status}: {text[:200]} (attempt {attempt+1})")
                 if r.status in (200, 201):
                     try: return json.loads(text), None
                     except: return None, "Invalid JSON"
-                # 418 = rate limited / teapot -> auto-retry with backoff
+                # 418 = rate limited -> retry with longer backoff
                 if r.status == 418 and attempt < max_retries:
-                    delay = 3 * (attempt + 1)  # 3s, 6s, 9s
+                    delay = 10 * (attempt + 1) + random.randint(1, 5)  # 11-15s, 21-25s, 31-35s, 41-45s, 51-55s
                     logging.warning(f"418 rate limited, retry {attempt+1}/{max_retries} after {delay}s")
                     await asyncio.sleep(delay)
+                    if attempt == 2:
+                        await prefetch_cookies()
                     continue
                 return None, f"HTTP {r.status}: {text[:150]}"
-        except asyncio.TimeoutError: return None, "Timeout"
-        except Exception as e:     return None, str(e)
-    return None, "HTTP 418: Rate limited after retries"
+        except asyncio.TimeoutError:
+            if attempt < max_retries:
+                await asyncio.sleep(5)
+                continue
+            return None, "Timeout"
+        except Exception as e:
+            if attempt < max_retries:
+                await asyncio.sleep(5)
+                continue
+            return None, str(e)
+    return None, "HTTP 418: Rate limited after retries - server IP may be temporarily blocked, try again later"
 
 async def api_register(phone, code, name, did, sid):
     return await api_post(REGISTER_URL, {
         "name": name, "phoneNumber": phone, "referredBy": code,
         "sourceData": {"type": "Referral", "refererurl": "", "timezone": "Asia/Kolkata"},
         "experimentMetaInfo": {"deviceId": did, "sessionId": sid},
-    }, REG_HEADERS)
+    }, _make_headers())
 
 async def api_send_otp(phone, did, sid):
     resp, err = await api_post(LOGIN_URL, {
@@ -191,7 +272,7 @@ async def api_send_otp(phone, did, sid):
         "sourceData": {"type": "portal", "utm_source": "web_app"},
         "experimentMetaInfo": {"deviceId": did, "sessionId": sid},
         "registerUser": False,
-    }, HEADERS)
+    }, _make_headers(extra_auth=False))
     if err: return None, err
     if resp and resp.get("message") == "OTP sent to your phone":
         ref = resp.get("data", {}).get("refrence_code")
@@ -203,7 +284,7 @@ async def api_verify_otp(phone, ref, otp, did, sid):
         "phone": phone, "reference_code": ref, "otp": otp,
         "experimentMetaInfo": {"deviceId": did, "sessionId": sid},
         "registerUser": False,
-    }, HEADERS)
+    }, _make_headers(extra_auth=False))
 
 # ==================== UTILS ====================
 NAMES = [
@@ -705,11 +786,13 @@ async def receive_phone(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     )
 
     did, sid = rand_id(), rand_id()
+    await asyncio.sleep(random.uniform(0.5, 1.5))  # human-like delay
     reg_resp, reg_err = await api_register(phone, refer_code, rand_name(), did, sid)
 
     if reg_err or not reg_resp:
         await status.edit_text(
             f"❌ *Registration failed!*\n{reg_err or 'No response'}\n\n"
+            "⏳ Agar rate limit hai to 1-2 min wait karke try karo.\n"
             "Kya karna hai?",
             parse_mode="Markdown",
             reply_markup=kb_otp_fail(),
@@ -1173,6 +1256,7 @@ NOT_BTN = filters.TEXT & ~filters.COMMAND & ~filters.Regex(
 async def post_init(app):
     global _BOT_USERNAME
     await load_data()
+    await prefetch_cookies()  # get anti-bot cookies before any API calls
     me = await app.bot.get_me()
     _BOT_USERNAME = me.username
     logging.info(f"Bot: @{_BOT_USERNAME}")

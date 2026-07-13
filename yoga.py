@@ -43,7 +43,7 @@ HEADERS = {
     "sec-fetch-site": "cross-site",
     "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",
 }
-REG_HEADERS = {**HEADERS, "authorization": "Bearer"}
+REG_HEADERS = {**HEADERS}  # No incomplete auth header
 
 # ==================== DATA STORE ====================
 _data: dict = {
@@ -151,18 +151,31 @@ async def get_session():
         )
     return _session
 
-async def api_post(url, payload, headers):
+async def api_post(url, payload, headers, max_retries=3):
     s = await get_session()
-    try:
-        async with s.post(url, json=payload, headers=headers) as r:
-            text = await r.text()
-            logging.info(f"API {url} → {r.status}: {text[:200]}")
-            if r.status in (200, 201):
-                try: return json.loads(text), None
-                except: return None, "Invalid JSON"
-            return None, f"HTTP {r.status}: {text[:150]}"
-    except asyncio.TimeoutError: return None, "Timeout"
-    except Exception as e:     return None, str(e)
+    for attempt in range(max_retries):
+        try:
+            async with s.post(url, json=payload, headers=headers) as r:
+                text = await r.text()
+                logging.info(f"API {url} → {r.status}: {text[:200]}")
+                if r.status in (200, 201):
+                    try: return json.loads(text), None
+                    except: return None, "Invalid JSON"
+                if r.status == 418:
+                    # Anti-bot / rate limit - wait and retry
+                    wait = 3 * (attempt + 1)
+                    logging.warning(f"418 teapot, retry {attempt+1}/{max_retries} after {wait}s")
+                    await asyncio.sleep(wait)
+                    continue
+                return None, f"HTTP {r.status}: {text[:150]}"
+        except asyncio.TimeoutError: return None, "Timeout"
+        except Exception as e:
+            logging.warning(f"API error attempt {attempt+1}: {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2)
+                continue
+            return None, str(e)
+    return None, "HTTP 418: Server rate-limited. Please retry after sometime."
 
 async def api_register(phone, code, name, did, sid):
     return await api_post(REGISTER_URL, {

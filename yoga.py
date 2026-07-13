@@ -225,7 +225,8 @@ async def is_channel_member(bot, uid: int) -> bool:
                 return False
         except Exception as e:
             logging.warning(f"Channel check error ({ch}): {e}")
-            return False
+            # If bot can't check (not admin, etc), don't block the user
+            continue
     return True
 
 def bot_refer_link(uid: int) -> str:
@@ -821,7 +822,6 @@ async def receive_otp(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 # ==================== INLINE CALLBACKS ====================
 async def callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q    = update.callback_query
-    await q.answer()
     data = q.data
     uid  = update.effective_user.id
 
@@ -834,6 +834,8 @@ async def callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 await q.edit_message_reply_markup(reply_markup=kb_join_channel())
             except: pass
             return ConversationHandler.END
+
+        await q.answer("✅ Channels verified!")
 
         pending = ctx.user_data.pop("pending_referrer", None)
         if pending and pending.isdigit():
@@ -853,6 +855,7 @@ async def callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     # ── cancel ──
     elif data == "cancel":
+        await q.answer()
         clear_temp(ctx)
         try: await q.edit_message_text("❌ Cancelled.")
         except: pass
@@ -861,6 +864,7 @@ async def callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     # ── main menu ──
     elif data == "main_menu":
+        await q.answer()
         clear_temp(ctx)
         try: await q.edit_message_text("✅ Done!")
         except: pass
@@ -869,6 +873,7 @@ async def callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     # ── retry otp ──
     elif data == "retry_otp":
+        await q.answer()
         phone = ctx.user_data.get("phone")
         if not phone:
             # No phone in context – go back to number type selection
@@ -904,6 +909,7 @@ async def callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     # ── refer more ──
     elif data == "refer_more":
+        await q.answer()
         pts = get_user(uid).get("points", 0)
         if pts < 1:
             try: await q.edit_message_text(f"❌ Points khatam! 🔗 Refer Link se dost bulao → +{get_brp()} pts milenge.")
@@ -923,7 +929,10 @@ async def callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     # ── admin callbacks ──
     elif uid != ADMIN_ID:
+        await q.answer()
         return ConversationHandler.END
+
+    await q.answer()
 
     if data == "adm_users":
         users = _data.get("users", {})

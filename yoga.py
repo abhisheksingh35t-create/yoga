@@ -16,6 +16,7 @@ from telegram import (
     Update, InlineKeyboardButton, InlineKeyboardMarkup,
     ReplyKeyboardMarkup, ChatMember,
 )
+from telegram.constants import ChatMemberStatus
 from telegram.ext import (
     Application, CommandHandler, ConversationHandler,
     MessageHandler, CallbackQueryHandler, filters, ContextTypes,
@@ -220,8 +221,8 @@ async def is_channel_member(bot, uid: int) -> bool:
         if not ch:
             continue
         try:
-            m = await bot.get_chat_member(ch, uid)
-            if m.status in (ChatMember.BANNED, ChatMember.LEFT):
+            m = await bot.get_chat_member(f"@{ch}", uid)
+            if m.status in (ChatMemberStatus.LEFT, ChatMemberStatus.BANNED):
                 return False
         except Exception as e:
             logging.warning(f"Channel check error ({ch}): {e}")
